@@ -39,28 +39,28 @@ function extractFormData() {
         fields: {},
         timestamp: new Date().toISOString()
     };
-    
+
     // First try to get inputs from active tab panel
     let activePanel = document.querySelector('[role="tabpanel"][aria-hidden="false"]');
-    
+
     // Fallback: look for the visible content area based on the active tab
     if (!activePanel) {
         // Get all inputs that are currently visible on the page
         // Include hidden inputs that are part of SAP selects (they have -hiddenInput suffix)
         const allInputs = document.querySelectorAll('input:not([type="hidden"]), input[id$="-hiddenInput"], select, textarea');
-        
+
         allInputs.forEach(input => {
             // Skip if not visible or (empty and not a checkbox)
             // Exception: allow hidden inputs that are part of SAP selects
             if (!input.offsetParent && !input.id?.endsWith('-hiddenInput')) return;
             if (!input.value && input.type !== 'checkbox') return;
-            
+
             // Skip inputs that are likely not part of the connectivity form
             if (input.id && (input.id.includes('search') || input.id.includes('filter'))) return;
-            
+
             // Create meaningful field identifier
             let fieldName = '';
-            
+
             // Try to find associated label
             const label = document.querySelector(`label[for="${input.id}"]`);
             if (label) {
@@ -77,12 +77,12 @@ function extractFormData() {
                     fieldName = (input.id || input.name || '').replace(/-inner$/, '').replace(/^__/, '');
                 }
             }
-            
+
             if (fieldName) {
                 // Store value based on element type
                 let value = input.value;
                 let elementType = input.type || input.tagName.toLowerCase();
-                
+
                 if (input.type === 'checkbox') {
                     // For SAP UI5 checkboxes, check the wrapper's aria-checked
                     const sapWrapper = input.closest('.sapMCb');
@@ -112,7 +112,7 @@ function extractFormData() {
                         }
                     }
                 }
-                
+
                 formData.fields[fieldName] = {
                     id: input.id,
                     name: input.name,
@@ -126,16 +126,16 @@ function extractFormData() {
         // Original logic for when panel is found
         // Include hidden inputs that are part of SAP selects (they have -hiddenInput suffix)
         const inputs = activePanel.querySelectorAll('input:not([type="hidden"]), input[id$="-hiddenInput"], select, textarea');
-        
+
         inputs.forEach(input => {
             // Skip if not visible or (empty and not a checkbox)
             // Exception: allow hidden inputs that are part of SAP selects
             if (!input.offsetParent && !input.id?.endsWith('-hiddenInput')) return;
             if (!input.value && input.type !== 'checkbox') return;
-            
+
             // Create meaningful field identifier
             let fieldName = '';
-            
+
             // Try to find associated label
             const label = document.querySelector(`label[for="${input.id}"]`);
             if (label) {
@@ -152,12 +152,12 @@ function extractFormData() {
                     fieldName = (input.id || input.name || '').replace(/-inner$/, '').replace(/^__/, '');
                 }
             }
-            
+
             if (fieldName) {
                 // Store value based on element type
                 let value = input.value;
                 let elementType = input.type || input.tagName.toLowerCase();
-                
+
                 if (input.type === 'checkbox') {
                     // For SAP UI5 checkboxes, check the wrapper's aria-checked
                     const sapWrapper = input.closest('.sapMCb');
@@ -187,7 +187,7 @@ function extractFormData() {
                         }
                     }
                 }
-                
+
                 formData.fields[fieldName] = {
                     id: input.id,
                     name: input.name,
@@ -198,12 +198,9 @@ function extractFormData() {
             }
         });
     }
-    
+
     return formData;
 }
-
-// Redirect old multi-phase approach to sequential for backward compatibility
-window.fillFormFieldsMultiPhase = window.fillFormFieldsSequential;
 
 // ============================================================================
 // NEW SEQUENTIAL APPROACH - Fills fields one by one from top to bottom
@@ -216,7 +213,6 @@ function wait(ms) {
 
 // Helper function: Get all visible form elements
 function getAllVisibleFormElements() {
-    // Get all inputs, but exclude search fields and hidden
     const selectors = [
         'input[type="text"]:not([id*="search"]):not([type="hidden"])',
         'input[type="number"]',
@@ -225,22 +221,29 @@ function getAllVisibleFormElements() {
         'input[role="combobox"]',
         'select',
         'textarea',
-        // Add SAP Select hidden inputs (for dropdowns like Proxy Type)
+        // SAP Select hidden inputs (for dropdowns like Proxy Type)
         'input[id$="-hiddenInput"]'
     ];
-    
+
     const elements = document.querySelectorAll(selectors.join(','));
+
     return Array.from(elements).filter(el => {
-        // Visible element (but allow hidden inputs for SAP selects)
-        if (!el.offsetParent && !el.id.endsWith('-hiddenInput')) return false;
-        
-        // Exclude help search
-        if (el.id && el.id.includes('h4-carousel')) return false;
-        
-        // Exclude elements outside the main form area
-        const rect = el.getBoundingClientRect();
-        if (rect.top < 200 || rect.top > 900) return false;
-        
+        const isSapHiddenInput = el.id?.endsWith('-hiddenInput');
+
+        // Allow SAP hidden dropdown inputs, but exclude other hidden elements.
+        if (!isSapHiddenInput) {
+            if (!el.getClientRects().length) return false;
+
+            if (el.offsetWidth === 0 && el.offsetHeight === 0) {
+                return false;
+            }
+        }
+
+        // Exclude help search elements.
+        if (el.id && el.id.includes('h4-carousel')) {
+            return false;
+        }
+
         return true;
     });
 }
@@ -250,7 +253,7 @@ function sortByPosition(elements) {
     return elements.sort((a, b) => {
         const rectA = a.getBoundingClientRect();
         const rectB = b.getBoundingClientRect();
-        
+
         // If they're on the same row (±5px), sort by left position
         if (Math.abs(rectA.top - rectB.top) < 5) {
             return rectA.left - rectB.left;
@@ -268,7 +271,7 @@ function detectElementType(element, wrapper) {
         if (wrapper.classList.contains('sapMSlt')) return 'sap-select';
         if (wrapper.classList.contains('sapMComboBox')) return 'sap-combobox';
     }
-    
+
     // By ID patterns
     if (element.id) {
         if (element.id.endsWith('-CB')) return 'sap-checkbox';
@@ -276,7 +279,7 @@ function detectElementType(element, wrapper) {
         if (element.id.includes('-hiddenInput')) return 'sap-select';
         if (element.getAttribute('role') === 'combobox') return 'sap-combobox';
     }
-    
+
     // Default HTML types
     return element.type || element.tagName.toLowerCase();
 }
@@ -284,13 +287,13 @@ function detectElementType(element, wrapper) {
 // Helper function: Find matching field data for an element
 function findFieldDataForElement(element, profileData) {
     const fields = profileData.fields;
-    
+
     // 1. Exact ID match
     for (const fieldName in fields) {
         const field = fields[fieldName];
         if (field.id === element.id) return field;
     }
-    
+
     // 2. ID without prefixes/suffixes
     const cleanId = element.id
         .replace(/^__/, '')
@@ -298,7 +301,7 @@ function findFieldDataForElement(element, profileData) {
         .replace(/-CB$/, '')
         .replace(/-RB$/, '')
         .replace(/-hiddenInput$/, '');
-        
+
     for (const fieldName in fields) {
         const field = fields[fieldName];
         const cleanFieldId = (field.id || '')
@@ -307,10 +310,10 @@ function findFieldDataForElement(element, profileData) {
             .replace(/-CB$/, '')
             .replace(/-RB$/, '')
             .replace(/-hiddenInput$/, '');
-            
+
         if (cleanFieldId === cleanId) return field;
     }
-    
+
     // 3. Match by name attribute (for radio buttons)
     if (element.name && element.type === 'radio') {
         for (const fieldName in fields) {
@@ -326,12 +329,12 @@ function findFieldDataForElement(element, profileData) {
             }
         }
     }
-    
+
     // 4. Match by fieldName being the element ID
     if (fields[element.id]) {
         return fields[element.id];
     }
-    
+
     return null;
 }
 
@@ -340,7 +343,7 @@ async function fillSapCheckbox(element, fieldData) {
     const shouldBeChecked = fieldData.value === 'on' || fieldData.value === true || fieldData.value === 'true';
     const wrapper = element.closest('.sapMCb');
     const isChecked = wrapper?.getAttribute('aria-checked') === 'true';
-    
+
     if (shouldBeChecked !== isChecked) {
         element.focus();
         element.dispatchEvent(new KeyboardEvent('keydown', {
@@ -367,7 +370,7 @@ async function fillSapCheckbox(element, fieldData) {
 async function fillSapRadio(element, fieldData) {
     const wrapper = element.closest('.sapMRb');
     const isChecked = wrapper?.getAttribute('aria-checked') === 'true';
-    
+
     if (!isChecked && (fieldData.value === 'on' || fieldData.checked)) {
         element.focus();
         element.dispatchEvent(new KeyboardEvent('keydown', {
@@ -392,7 +395,7 @@ async function fillSapRadio(element, fieldData) {
 
 // Fill SAP UI5 select dropdown
 async function fillSapSelect(element, fieldData) {
-    
+
     // Find the select wrapper div
     let selectWrapper = null;
     if (element.id.includes('-hiddenInput')) {
@@ -402,20 +405,20 @@ async function fillSapSelect(element, fieldData) {
     } else {
         selectWrapper = element.closest('.sapMSlt');
     }
-    
+
     if (!selectWrapper) {
         return false;
     }
-    
+
     // Method 1: Simple keyboard approach (like we did for checkboxes)
     // Find the interactive element (the hidden select with role="combobox")
     const hiddenSelect = selectWrapper.querySelector('[role="combobox"]');
     if (hiddenSelect) {
-        
+
         // Focus the element
         hiddenSelect.focus();
         await wait(100);
-        
+
         // Try opening with Space (like checkboxes)
         const spaceEvent = new KeyboardEvent('keydown', {
             key: ' ',
@@ -426,7 +429,7 @@ async function fillSapSelect(element, fieldData) {
         });
         hiddenSelect.dispatchEvent(spaceEvent);
         await wait(200);
-        
+
         // Also try keyup
         const spaceUpEvent = new KeyboardEvent('keyup', {
             key: ' ',
@@ -437,11 +440,11 @@ async function fillSapSelect(element, fieldData) {
         });
         hiddenSelect.dispatchEvent(spaceUpEvent);
         await wait(200);
-        
+
         // Check if dropdown is open, if not try Enter
         if (hiddenSelect.getAttribute('aria-expanded') !== 'true') {
             const enterEvent = new KeyboardEvent('keydown', {
-                key: 'Enter',
+			                key: 'Enter',
                 code: 'Enter',
                 keyCode: 13,
                 which: 13,
@@ -450,7 +453,7 @@ async function fillSapSelect(element, fieldData) {
             hiddenSelect.dispatchEvent(enterEvent);
             await wait(200);
         }
-        
+
         // If still not open, try Alt+Down (common dropdown pattern)
         if (hiddenSelect.getAttribute('aria-expanded') !== 'true') {
             const altDownEvent = new KeyboardEvent('keydown', {
@@ -464,15 +467,15 @@ async function fillSapSelect(element, fieldData) {
             hiddenSelect.dispatchEvent(altDownEvent);
             await wait(200);
         }
-        
+
         // Now try to select the right option
         const targetValue = fieldData.value === 'ON-PREMISE' ? 'On-Premise' : 
                           fieldData.value === 'NONE' ? 'Internet' : 
                           fieldData.value;
-        
+
         // Get current selection
         const currentText = selectWrapper.querySelector('.sapMSelectListItemText')?.textContent?.trim();
-        
+
         // If we need to change selection
         if (currentText !== targetValue) {
             // Try arrow down to move to next option
@@ -497,7 +500,7 @@ async function fillSapSelect(element, fieldData) {
                 hiddenSelect.dispatchEvent(arrowUpEvent);
                 await wait(100);
             }
-            
+
             // Confirm selection with Enter
             const confirmEvent = new KeyboardEvent('keydown', {
                 key: 'Enter',
@@ -508,10 +511,10 @@ async function fillSapSelect(element, fieldData) {
             });
             hiddenSelect.dispatchEvent(confirmEvent);
             await wait(100);
-            
+
             // Verify the change
             const newText = selectWrapper.querySelector('.sapMSelectListItemText')?.textContent?.trim();
-            
+
             if (newText === targetValue) {
                 return true;
             }
@@ -519,7 +522,7 @@ async function fillSapSelect(element, fieldData) {
             return true;
         }
     }
-    
+
     // Try SAP UI5 API first (if available in the page context)
     if (typeof sap !== 'undefined' && sap.ui?.getCore) {
         try {
@@ -542,22 +545,22 @@ async function fillSapSelect(element, fieldData) {
         } catch(e) {
         }
     }
-    
+
     // Method 3: Click on the list items directly if they're visible
     const listItems = selectWrapper.querySelectorAll('li[role="option"]');
     if (listItems.length > 0) {
-        
+
         // First click on the select to make it active
         selectWrapper.click();
         await wait(100);
-        
+
         for (const item of listItems) {
             const text = item.textContent?.trim();
             if (text === fieldData.value || 
                 text === 'On-Premise' && fieldData.value === 'ON-PREMISE' ||
                 text === 'Internet' && fieldData.value === 'NONE') {
-                
-                
+
+
                 // Simulate mouse events for proper SAP UI5 interaction
                 const mousedownEvent = new MouseEvent('mousedown', {
                     bubbles: true,
@@ -565,37 +568,37 @@ async function fillSapSelect(element, fieldData) {
                     view: window
                 });
                 item.dispatchEvent(mousedownEvent);
-                
+
                 await wait(50);
-                
+
                 const mouseupEvent = new MouseEvent('mouseup', {
                     bubbles: true,
                     cancelable: true,
                     view: window
                 });
                 item.dispatchEvent(mouseupEvent);
-                
+
                 await wait(50);
-                
+
                 const clickEvent = new MouseEvent('click', {
                     bubbles: true,
                     cancelable: true,
                     view: window
                 });
                 item.dispatchEvent(clickEvent);
-                
+
                 await wait(100);
                 return true;
             }
         }
     }
-    
+
     // Method 4: Try clicking the arrow and then the item
     const arrow = selectWrapper.querySelector('.sapMSltArrow');
     if (arrow) {
         arrow.click();
         await wait(300);
-        
+
         // Look for dropdown items
         const dropdownItems = document.querySelectorAll('.sapMSelectListItem, li[role="option"]');
         for (const item of dropdownItems) {
@@ -608,28 +611,28 @@ async function fillSapSelect(element, fieldData) {
                 return true;
             }
         }
-        
+
         // Close dropdown if nothing matched
         arrow.click();
     }
-    
+
     return false;
 }
 
 // Fill SAP UI5 combobox
 async function fillSapCombobox(element, fieldData) {
-    
+
     // Combobox is like a text input with selection options
     element.value = fieldData.value;
     element.dispatchEvent(new Event('input', { bubbles: true }));
     element.dispatchEvent(new Event('change', { bubbles: true }));
-    
+
     // If there are options, try to select
     const wrapper = element.closest('.sapMComboBox');
     if (wrapper) {
         element.focus();
         await wait(100);
-        
+
         // Check if options appeared
         const items = document.querySelectorAll('.sapMComboBoxBaseItem');
         for (const item of items) {
@@ -640,7 +643,7 @@ async function fillSapCombobox(element, fieldData) {
             }
         }
     }
-    
+
     return true;
 }
 
@@ -658,25 +661,24 @@ async function fillSingleField(element, fieldData) {
     try {
         const wrapper = element.closest('.sapMCb, .sapMRb, .sapMSlt, .sapMInput, .sapMComboBox');
         const elementType = detectElementType(element, wrapper);
-        
-        
-        switch(elementType) {
-            case 'sap-checkbox':
+
+
+        switch(elementType) {            case 'sap-checkbox':
                 return await fillSapCheckbox(element, fieldData);
-                
+
             case 'sap-radio':
                 return await fillSapRadio(element, fieldData);
-                
+
             case 'sap-select':
                 return await fillSapSelect(element, fieldData);
-                
+
             case 'sap-combobox':
                 return await fillSapCombobox(element, fieldData);
-                
+
             case 'text':
             case 'number':
                 return await fillTextInput(element, fieldData);
-                
+
             default:
                 return false;
         }
@@ -691,15 +693,15 @@ window.fillFormFieldsSequential = async function(profileData) {
     if (!profileData || !profileData.fields) {
         return 0;
     }
-    
+
     let filledCount = 0;
-    
+
     // 1. Get all visible form elements
     const elements = getAllVisibleFormElements();
-    
+
     // 2. Sort by position (top to bottom, left to right)
     const sortedElements = sortByPosition(elements);
-    
+
     // 3. Fill each element sequentially
     for (const element of sortedElements) {
         const fieldData = findFieldDataForElement(element, profileData);
@@ -707,10 +709,10 @@ window.fillFormFieldsSequential = async function(profileData) {
             const success = await fillSingleField(element, fieldData);
             if (success) {
                 filledCount++;
-                
+
                 // Wait between fields to allow dynamic fields to appear
                 await wait(150);
-                
+
                 // Check if new elements appeared after filling this field
                 const newElements = getAllVisibleFormElements();
                 if (newElements.length > elements.length) {
@@ -726,47 +728,48 @@ window.fillFormFieldsSequential = async function(profileData) {
             }
         }
     }
-    
+
     return filledCount;
 };
 
-// Keep backward compatibility - redirect to sequential method
+// Keep backward compatibility - redirect old function names to sequential method
 window.fillFormFields = window.fillFormFieldsSequential;
+window.fillFormFieldsMultiPhase = window.fillFormFieldsSequential;
 
 // Enhanced version with progress indicator
 window.fillFormFieldsWithProgress = async function(profileData) {
     if (!profileData || !profileData.fields) {
         return 0;
     }
-    
+
     const totalFields = Object.keys(profileData.fields).length;
     let currentField = 0;
-    
+
     let filledCount = 0;
-    
+
     // Get all visible form elements
     const elements = getAllVisibleFormElements();
-    
+
     // Sort by position (top to bottom, left to right)
     const sortedElements = sortByPosition(elements);
-    
+
     // Fill each element sequentially with progress updates
     for (const element of sortedElements) {
         const fieldData = findFieldDataForElement(element, profileData);
         if (fieldData) {
             currentField++;
-            
+
             // Update progress indicator
             updateBusyIndicator(`Processing field ${currentField}/${totalFields}`, 
                               Math.round((currentField / totalFields) * 100));
-            
+
             const success = await fillSingleField(element, fieldData);
             if (success) {
                 filledCount++;
-                
+
                 // Wait between fields to allow dynamic fields to appear
                 await wait(150);
-                
+
                 // Check if new elements appeared after filling this field
                 const newElements = getAllVisibleFormElements();
                 if (newElements.length > elements.length) {
@@ -782,14 +785,14 @@ window.fillFormFieldsWithProgress = async function(profileData) {
             }
         }
     }
-    
+
     return filledCount;
 };
 
 // Storage functions
 async function getStoredProfiles() {
     const storageKey = 'connectivityCredentialsManager---profiles';
-    
+
     return new Promise(resolve => {
         chrome.storage.local.get([storageKey], result => {
             if (chrome.runtime.lastError) {
@@ -805,9 +808,9 @@ async function getStoredProfiles() {
 async function saveProfileToStorage(profileName, data) {
     const storageKey = 'connectivityCredentialsManager---profiles';
     const profiles = await getStoredProfiles();
-    
+
     const existingIndex = profiles.findIndex(p => p.name === profileName);
-    
+
     const profile = {
         name: profileName,
         type: data.type,
@@ -815,13 +818,13 @@ async function saveProfileToStorage(profileName, data) {
         created: existingIndex >= 0 ? profiles[existingIndex].created : new Date().toISOString(),
         updated: new Date().toISOString()
     };
-    
+
     if (existingIndex >= 0) {
         profiles[existingIndex] = profile;
     } else {
         profiles.push(profile);
     }
-    
+
     return new Promise(resolve => {
         chrome.storage.local.set({ [storageKey]: profiles }, () => {
             if (chrome.runtime.lastError) {
@@ -838,7 +841,7 @@ async function deleteProfileFromStorage(profileName) {
     const storageKey = 'connectivityCredentialsManager---profiles';
     const profiles = await getStoredProfiles();
     const filtered = profiles.filter(p => p.name !== profileName);
-    
+
     return new Promise(resolve => {
         chrome.storage.local.set({ [storageKey]: filtered }, () => {
             resolve(!chrome.runtime.lastError);
@@ -850,7 +853,7 @@ async function deleteProfileFromStorage(profileName) {
 function showBusyIndicator(profileName, profileData) {
     // Remove any existing indicator
     hideBusyIndicator();
-    
+
     // Create overlay
     const overlay = document.createElement('div');
     overlay.id = 'cpiConnectivityBusyOverlay';
@@ -866,7 +869,7 @@ function showBusyIndicator(profileName, profileData) {
         justify-content: center;
         z-index: 10000;
     `;
-    
+
     // Create indicator container
     const indicator = document.createElement('div');
     indicator.style.cssText = `
@@ -878,9 +881,9 @@ function showBusyIndicator(profileName, profileData) {
         min-width: 300px;
         max-width: 400px;
     `;
-    
+
     // Add content
-    indicator.innerHTML = `
+	    indicator.innerHTML = `
         <div style="margin-bottom: 20px;">
             <div style="font-size: 48px; margin-bottom: 10px;">⚙️</div>
             <h3 style="margin: 0 0 10px 0; color: #333;">Loading Profile</h3>
@@ -919,7 +922,7 @@ function showBusyIndicator(profileName, profileData) {
             }
         </style>
     `;
-    
+
     overlay.appendChild(indicator);
     document.body.appendChild(overlay);
 }
@@ -927,11 +930,11 @@ function showBusyIndicator(profileName, profileData) {
 function updateBusyIndicator(status, progress) {
     const statusEl = document.getElementById('cpiConnectivityStatus');
     const progressEl = document.getElementById('cpiConnectivityProgress');
-    
+
     if (statusEl) {
         statusEl.textContent = status;
     }
-    
+
     if (progressEl && progress !== undefined) {
         progressEl.style.width = `${progress}%`;
     }
@@ -950,7 +953,7 @@ function createButton(text, title, onClick) {
     button.className = 'sapMBtn sapMBtnBase';
     button.textContent = text;
     button.title = title;
-    
+
     // Style to match SAP Fiori theme
     button.style.cssText = `
         height: 2rem;
@@ -968,35 +971,35 @@ function createButton(text, title, onClick) {
         transition: background-color 0.1s;
         white-space: nowrap;
     `;
-    
+
     // Add hover effect
     button.addEventListener('mouseenter', () => {
         button.style.backgroundColor = 'rgba(0, 112, 177, 0.1)';
     });
-    
+
     button.addEventListener('mouseleave', () => {
         button.style.backgroundColor = 'transparent';
     });
-    
+
     // Add active/pressed effect
     button.addEventListener('mousedown', () => {
         button.style.backgroundColor = 'rgba(0, 112, 177, 0.2)';
     });
-    
+
     button.addEventListener('mouseup', () => {
         button.style.backgroundColor = 'rgba(0, 112, 177, 0.1)';
     });
-    
+
     // Add focus outline
     button.addEventListener('focus', () => {
         button.style.outline = '1px dotted #0070b1';
         button.style.outlineOffset = '2px';
     });
-    
+
     button.addEventListener('blur', () => {
         button.style.outline = 'none';
     });
-    
+
     button.addEventListener('click', onClick);
     return button;
 }
@@ -1012,78 +1015,67 @@ function showNotification(title, message, type = 'info') {
 }
 
 function createUI() {
-    // Don't create if already exists
-    if (document.querySelector('#cpiConnectivityControls')) return;
-    
-    // Find the header bar
-    const header = document.querySelector('#PageConnectivity > header.sapMPageHeader');
+    // Prevent duplicate controls if the plugin is initialized more than once.
+    if (document.getElementById('cpiConnectivityControls')) return true;
+
+    // Integration Suite uses a Dynamic Page title wrapper. The component ID is
+    // generated, so match the stable suffix and UI5 class instead of a fixed ID.
+    const header = document.querySelector(
+        'header[id$="--PageConnectivity-header"].sapFDynamicPageTitleWrapper'
+    );
+
     if (!header) {
-        console.log('[Connectivity Manager] Header not found, retrying...');
-        return;
+        console.log('[Connectivity Manager] Connectivity page title header not found yet.');
+        return false;
     }
 
-    // Find or create right area in header bar
-    let rightArea = header.querySelector('.sapMBarRight');
-    let useFlexPush = false;
+    // This is the action area on the right side of the Dynamic Page title.
+    const rightArea = header.querySelector('.sapFDynamicPageTitleMainActions');
     if (!rightArea) {
-        const barMiddle = header.querySelector('.sapMBarMiddle');
-        if (barMiddle && barMiddle.parentNode) {
-            rightArea = document.createElement('div');
-            rightArea.className = 'sapMBarRight sapMBarContainer';
-            barMiddle.parentNode.appendChild(rightArea);
-        }
+        console.log('[Connectivity Manager] Dynamic Page title action area not found yet.');
+        return false;
     }
 
-    // New Integration Suite shell: header is a sapMTB flex toolbar containing only
-    // the breadcrumb. Inject directly into the toolbar and push our controls right.
-    if (!rightArea) {
-        rightArea = header.querySelector('.sapMTB') || header.firstElementChild;
-        useFlexPush = !!rightArea;
-    }
-
-    if (!rightArea) {
-        console.log('[Connectivity Manager] Could not create right area');
-        return;
-    }
-
-    // Create container for our controls
     const controlsContainer = document.createElement('div');
     controlsContainer.id = 'cpiConnectivityControls';
     controlsContainer.style.cssText = `
         display: inline-flex;
         align-items: center;
-        margin-right: 0.5rem;
-        padding-left: 0.5rem;
-        border-left: 1px solid rgba(0, 0, 0, 0.1);
-        height: 2.5rem;
-        ${useFlexPush ? 'margin-left: auto;' : ''}
+        gap: 0.25rem;
+        margin-left: 0.5rem;
+        white-space: nowrap;
     `;
-    
-    // Save button
-    const saveBtn = createButton('Save', 'Save current form data as a reusable profile', showSaveDialog);
-    
-    // Load button
-    const loadBtn = createButton('Load', 'Load a saved profile to fill the form', showLoadDialog);
-    
-    // Manage button
-    const manageBtn = createButton('Manage', 'View, edit, or delete saved profiles', showManageDialog);
-    
-    // Help button
-    const helpBtn = createButton('?', 'Help - How to use profiles', showHelpDialog);
+
+    const saveBtn = createButton(
+        'Save',
+        'Save current form data as a reusable profile',
+        showSaveDialog
+    );
+    const loadBtn = createButton(
+        'Load',
+        'Load a saved profile to fill the form',
+        showLoadDialog
+    );
+    const manageBtn = createButton(
+        'Manage',
+        'View, edit, or delete saved profiles',
+        showManageDialog
+    );
+    const helpBtn = createButton(
+        '?',
+        'Help - How to use profiles',
+        showHelpDialog
+    );
+
     helpBtn.style.minWidth = '1.5rem';
     helpBtn.style.padding = '0 0.5rem';
-    helpBtn.style.marginLeft = '0.5rem';
-    helpBtn.style.borderLeft = '1px solid rgba(0, 0, 0, 0.1)';
-    helpBtn.style.paddingLeft = '0.75rem';
-    
-    controlsContainer.appendChild(saveBtn);
-    controlsContainer.appendChild(loadBtn);
-    controlsContainer.appendChild(manageBtn);
-    controlsContainer.appendChild(helpBtn);
-    
+    helpBtn.style.marginLeft = '0.25rem';
+
+    controlsContainer.append(saveBtn, loadBtn, manageBtn, helpBtn);
     rightArea.appendChild(controlsContainer);
-    
-    console.log('[Connectivity Manager] UI created successfully');
+
+    console.log('[Connectivity Manager] UI created successfully in Dynamic Page title actions.');
+    return true;
 }
 
 // Create consistent dialog HTML
@@ -1111,12 +1103,12 @@ function showHelpDialog() {
                         <i class="info circle icon"></i>
                         About Profile Manager
                     </h4>
-                    <p style="font-size: 0.92rem; line-height: 1.5;">
+					                    <p style="font-size: 0.92rem; line-height: 1.5;">
                         The Profile Manager helps you save and reuse connectivity test configurations. 
                         This saves time when testing multiple environments or switching between different connection settings.
                     </p>
                 </div>
-                
+
                 <div class="ui segment">
                     <h4 class="ui header" style="font-size: 1rem;">
                         <i class="list icon"></i>
@@ -1146,7 +1138,7 @@ function showHelpDialog() {
                         </div>
                     </div>
                 </div>
-                
+
                 <div class="ui segment">
                     <h4 class="ui header" style="font-size: 1rem;">
                         <i class="shield alternate icon"></i>
@@ -1157,17 +1149,17 @@ function showHelpDialog() {
                         No data is sent to external servers. Profiles are specific to each connection type (TLS, SSH, FTP, etc.).
                     </p>
                 </div>
-                
+
                 <div class="ui info message" style="font-size: 0.9rem;">
                     <i class="lightbulb outline icon"></i>
                     <strong>Tip:</strong> Use descriptive names for your profiles like "Production SFTP" or "Test Environment SSH" to easily identify them later.
                 </div>
             </div>
         `;
-        
+
         const html = createDialogHTML('Profile Manager Help', 'question circle', content);
         showBigPopup(createElementFromHTML(html), 'Help');
-        
+
         // Add close button to modal footer
         setTimeout(() => {
             const modalFooter = document.querySelector('#cpiHelper_semanticui_modal .actions');
@@ -1177,7 +1169,7 @@ function showHelpDialog() {
                         Got it!
                     </button>
                 `;
-                
+
                 document.getElementById('helpCloseBtn')?.addEventListener('click', () => {
                     cpihModal.hide('#cpiHelper_semanticui_modal');
                 });
@@ -1189,12 +1181,12 @@ function showHelpDialog() {
 function showSaveDialog() {
     const formData = extractFormData();
     const fieldCount = Object.keys(formData.fields).length;
-    
+
     if (fieldCount === 0) {
         showNotification('No data to save', 'Please fill out some fields first', 'warning');
         return;
     }
-    
+
     // Check if CPI Helper functions are available
     if (typeof showBigPopup === 'function' && typeof createElementFromHTML === 'function') {
         const content = `
@@ -1209,15 +1201,15 @@ function showSaveDialog() {
                        style="font-size: 0.92rem; padding: 0.5rem;">
             </div>
         `;
-        
+
         const html = createDialogHTML('Save Connectivity Profile', 'save', content);
-        
+
         showBigPopup(createElementFromHTML(html), 'Save Profile');
-        
+
         setTimeout(() => {
             const input = document.getElementById('profileNameInput');
             if (input) input.focus();
-            
+
             // Add custom save button to modal footer
             const modalFooter = document.querySelector('#cpiHelper_semanticui_modal .actions');
             if (modalFooter) {
@@ -1227,21 +1219,21 @@ function showSaveDialog() {
                         <i class="save icon"></i> Save Profile
                     </button>
                 `;
-                
+
                 document.getElementById('saveCancelBtn')?.addEventListener('click', () => {
                     cpihModal.hide('#cpiHelper_semanticui_modal');
                 });
-                
+
                 document.getElementById('saveProfileBtn')?.addEventListener('click', async () => {
                     const profileName = document.getElementById('profileNameInput').value.trim();
-                    
+
                     if (!profileName) {
                         showNotification('Invalid name', 'Please enter a profile name', 'error');
                         return;
                     }
-                    
+
                     const saved = await saveProfileToStorage(profileName, formData);
-                    
+
                     if (saved) {
                         showNotification('Profile saved', `"${profileName}" saved successfully`, 'success');
                         cpihModal.hide('#cpiHelper_semanticui_modal');
@@ -1269,15 +1261,15 @@ function showSaveDialog() {
 async function showLoadDialog() {
     const profiles = await getStoredProfiles();
     const currentTab = getCurrentTabType();
-    
+
     if (profiles.length === 0) {
         showNotification('No profiles', 'No saved profiles found', 'info');
         return;
     }
-    
+
     const matchingProfiles = profiles.filter(p => p.type === currentTab);
     const otherProfiles = profiles.filter(p => p.type !== currentTab);
-    
+
     if (typeof showBigPopup === 'function' && typeof createElementFromHTML === 'function') {
         let content = `
             <div class="ui info message" style="font-size: 0.92rem;">
@@ -1285,7 +1277,7 @@ async function showLoadDialog() {
                 Current tab: <strong>${currentTab}</strong>
             </div>
         `;
-        
+
         if (matchingProfiles.length > 0) {
             content += `
                 <h4 class="ui header" style="font-size: 1rem; margin-top: 1rem;">
@@ -1318,7 +1310,7 @@ async function showLoadDialog() {
             });
             content += `</div>`;
         }
-        
+
         if (otherProfiles.length > 0) {
             content += `
                 <h4 class="ui header" style="font-size: 1rem; margin-top: 1rem;">
@@ -1331,7 +1323,7 @@ async function showLoadDialog() {
                 </div>
                 <div class="ui relaxed divided list" style="font-size: 0.92rem;">`;
             otherProfiles.forEach(profile => {
-                const date = new Date(profile.updated);
+			                const date = new Date(profile.updated);
                 const dateStr = `${date.toLocaleDateString()} ${date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`;
                 content += `
                     <div class="item other-profile-item" style="padding: 0.75rem; opacity: 0.5; cursor: not-allowed;">
@@ -1355,11 +1347,11 @@ async function showLoadDialog() {
             });
             content += `</div>`;
         }
-        
+
         const html = createDialogHTML('Load Profile', 'folder open', content);
-        
+
         showBigPopup(createElementFromHTML(html), 'Load Profile');
-        
+
         // Add event listeners after dialog is shown
         setTimeout(() => {
             // Load profile on click (only for matching profiles)
@@ -1367,20 +1359,20 @@ async function showLoadDialog() {
                 item.addEventListener('click', async function() {
                     const profileName = this.getAttribute('data-profile-name');
                     const profile = profiles.find(p => p.name === profileName);
-                    
+
                     if (profile && profile.type === currentTab) {
                         // Hide the modal immediately
                         cpihModal.hide('#cpiHelper_semanticui_modal');
-                        
+
                         // Show busy indicator
                         showBusyIndicator(profileName, profile.data);
-                        
+
                         // Fill the form with progress updates
                         const filledCount = await window.fillFormFieldsWithProgress(profile.data);
-                        
+
                         // Hide busy indicator
                         hideBusyIndicator();
-                        
+
                         if (filledCount > 0) {
                             showNotification('Profile loaded', `Successfully loaded ${filledCount} fields from "${profileName}"`, 'success');
                         } else {
@@ -1389,7 +1381,7 @@ async function showLoadDialog() {
                     }
                 });
             });
-            
+
             // Add click handler for other profile items to show warning
             document.querySelectorAll('.other-profile-item').forEach(item => {
                 item.addEventListener('click', function(e) {
@@ -1397,7 +1389,7 @@ async function showLoadDialog() {
                     showNotification('Wrong tab', 'This profile is for a different connection type', 'warning');
                 });
             });
-            
+
             // View profile details on eye button click
             document.querySelectorAll('.view-quick-btn').forEach(btn => {
                 btn.addEventListener('click', function(e) {
@@ -1422,7 +1414,7 @@ async function showLoadDialog() {
                 message += `${matchingProfiles.length + i + 1}. ${p.name} (${p.type})\n`;
             });
         }
-        
+
         const selection = prompt(message + '\nEnter number:');
         if (selection) {
             const index = parseInt(selection) - 1;
@@ -1447,14 +1439,14 @@ function showProfileDetails(profile) {
         // Prepare field values for display
         const fields = profile.data.fields;
         let fieldRows = '';
-        
+
         // Sort fields by their IDs for consistent display
         const sortedFields = Object.entries(fields).sort((a, b) => {
             const idA = a[1].id || a[0];
             const idB = b[1].id || b[0];
             return idA.localeCompare(idB);
         });
-        
+
         sortedFields.forEach(([fieldName, fieldData]) => {
             // Clean up field name for display
             let displayName = fieldName;
@@ -1471,7 +1463,7 @@ function showProfileDetails(profile) {
                     .replace(/^inp|^chb|^rb|^cmb|^txt/, '')
                     .trim();
             }
-            
+
             // Format value for display
             let displayValue = fieldData.value;
             if (fieldData.type === 'checkbox') {
@@ -1485,10 +1477,10 @@ function showProfileDetails(profile) {
             } else if (displayValue.length > 50) {
                 displayValue = displayValue.substring(0, 50) + '...';
             }
-            
+
             // Escape HTML
             displayValue = String(displayValue).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-            
+
             fieldRows += `
                 <tr>
                     <td style="font-weight: 600; padding: 0.5rem 0.75rem; border-bottom: 1px solid #f0f0f0; font-size: 0.85rem;">
@@ -1503,7 +1495,7 @@ function showProfileDetails(profile) {
                 </tr>
             `;
         });
-        
+
         const content = `
             <div style="max-height: 600px; overflow-y: auto;">
                 <div class="ui segment" style="padding: 1rem;">
@@ -1522,7 +1514,7 @@ function showProfileDetails(profile) {
                         </div>
                     </div>
                 </div>
-                
+
                 <h4 class="ui header" style="font-size: 1rem; margin-top: 1rem;">
                     <i class="list icon"></i>
                     Field Values
@@ -1543,16 +1535,16 @@ function showProfileDetails(profile) {
                 </div>
             </div>
         `;
-        
+
         const html = createDialogHTML(`Profile: ${profile.name}`, 'eye', content);
-        
+
         // Create wrapper with button handlers
         const wrapper = document.createElement('div');
         wrapper.innerHTML = html;
-        
+
         // Show dialog first
-        showBigPopup(wrapper, 'Profile Details');
-        
+		        showBigPopup(wrapper, 'Profile Details');
+
         // Add custom buttons to the modal footer
         setTimeout(() => {
             // Find the modal footer
@@ -1567,13 +1559,13 @@ function showProfileDetails(profile) {
                         Close
                     </button>
                 `;
-                
+
                 // Add event listeners
                 document.getElementById('profileDetailsBackBtn')?.addEventListener('click', () => {
                     cpihModal.hide('#cpiHelper_semanticui_modal');
                     setTimeout(showManageDialog, 300);
                 });
-                
+
                 document.getElementById('profileDetailsCloseBtn')?.addEventListener('click', () => {
                     cpihModal.hide('#cpiHelper_semanticui_modal');
                 });
@@ -1586,7 +1578,7 @@ function showProfileDetails(profile) {
         message += `Fields: ${Object.keys(profile.data.fields).length}\n`;
         message += `Updated: ${new Date(profile.updated).toLocaleString()}\n\n`;
         message += 'Field Values:\n';
-        
+
         Object.entries(profile.data.fields).forEach(([name, field]) => {
             let value = field.value;
             if (field.type === 'password' || name.toLowerCase().includes('password')) {
@@ -1596,19 +1588,19 @@ function showProfileDetails(profile) {
             }
             message += `  ${name}: ${value}\n`;
         });
-        
+
         alert(message);
     }
 }
 
 async function showManageDialog() {
     const profiles = await getStoredProfiles();
-    
+
     if (profiles.length === 0) {
         showNotification('No profiles', 'No saved profiles to manage', 'info');
         return;
     }
-    
+
     if (typeof showBigPopup === 'function' && typeof createElementFromHTML === 'function') {
         let html = `
             <div class="ui form">
@@ -1619,7 +1611,7 @@ async function showManageDialog() {
                 <p>${profiles.length} saved profile${profiles.length !== 1 ? 's' : ''}</p>
                 <div class="ui relaxed divided list">
         `;
-        
+
         profiles.forEach(profile => {
             html += `
                 <div class="item">
@@ -1643,14 +1635,14 @@ async function showManageDialog() {
                 </div>
             `;
         });
-        
+
         html += `
                 </div>
             </div>
         `;
-        
+
         showBigPopup(createElementFromHTML(html), 'Manage Profiles');
-        
+
         // Add event listeners after dialog is shown
         setTimeout(() => {
             // View button handlers
@@ -1663,7 +1655,7 @@ async function showManageDialog() {
                     }
                 });
             });
-            
+
             // Delete button handlers
             document.querySelectorAll('.delete-profile-btn').forEach(btn => {
                 btn.addEventListener('click', async function() {
@@ -1687,7 +1679,7 @@ async function showManageDialog() {
             message += `${i + 1}. ${p.name} (${p.type})\n`;
         });
         message += '\nEnter number to delete (or cancel):';
-        
+
         const selection = prompt(message);
         if (selection) {
             const index = parseInt(selection) - 1;
@@ -1708,86 +1700,82 @@ async function showManageDialog() {
 // Initialize function
 function initializePlugin() {
     if (!isConnectivityPage()) return;
-    
-    if (connectivityCredentialsState.initialized) return;
-    
-    console.log('[Connectivity Manager] Initializing on connectivity page...');
-    
-    // Try to create UI
-    createUI();
-    
-    // If UI wasn't created, set up observer to wait for page load
-    if (!document.querySelector('#cpiConnectivityControls')) {
-        if (connectivityCredentialsState.observer) {
-            connectivityCredentialsState.observer.disconnect();
-        }
-        
-        connectivityCredentialsState.observer = new MutationObserver((mutations, observer) => {
-            if (document.querySelector('#PageConnectivity > header.sapMPageHeader')) {
-                createUI();
-                if (document.querySelector('#cpiConnectivityControls')) {
-                    observer.disconnect();
-                    connectivityCredentialsState.initialized = true;
-                }
-            }
-        });
-        
-        connectivityCredentialsState.observer.observe(document.body, {
-            childList: true,
-            subtree: true
-        });
-        
-        // Also try periodically for 10 seconds
-        let attempts = 0;
-        const interval = setInterval(() => {
-            attempts++;
-            createUI();
-            if (document.querySelector('#cpiConnectivityControls') || attempts > 20) {
-                clearInterval(interval);
-                if (connectivityCredentialsState.observer) {
-                    connectivityCredentialsState.observer.disconnect();
-                }
-                connectivityCredentialsState.initialized = true;
-            }
-        }, 500);
-    } else {
-        connectivityCredentialsState.initialized = true;
-    }
-}
 
-// Check for page changes (SPA navigation)
-function checkForPageChange() {
-    const wasInitialized = connectivityCredentialsState.initialized;
-    const isNowConnectivityPage = isConnectivityPage();
-    
-    if (!wasInitialized && isNowConnectivityPage) {
-        // Navigated to connectivity page
-        initializePlugin();
-    } else if (wasInitialized && !isNowConnectivityPage) {
-        // Navigated away from connectivity page
-        connectivityCredentialsState.initialized = false;
+    // Avoid creating multiple observers or duplicate initialization cycles.
+    if (connectivityCredentialsState.initialized &&
+        document.getElementById('cpiConnectivityControls')) {
+        return;
+    }
+
+    connectivityCredentialsState.initialized = true;
+    console.log('[Connectivity Manager] Initializing on Connectivity Test page...');
+
+    // The UI5 Dynamic Page header may render after the route has loaded.
+    if (createUI()) {
         if (connectivityCredentialsState.observer) {
             connectivityCredentialsState.observer.disconnect();
             connectivityCredentialsState.observer = null;
         }
-    } else if (isNowConnectivityPage && !document.querySelector('#cpiConnectivityControls')) {
-        // Still on connectivity page but UI is missing
+        return;
+    }
+
+    if (connectivityCredentialsState.observer) {
+        connectivityCredentialsState.observer.disconnect();
+    }
+
+    connectivityCredentialsState.observer = new MutationObserver(() => {
+        if (!isConnectivityPage()) return;
+
+        if (createUI()) {
+            connectivityCredentialsState.observer?.disconnect();
+            connectivityCredentialsState.observer = null;
+        }
+    });
+
+    connectivityCredentialsState.observer.observe(document.body, {
+        childList: true,
+        subtree: true
+    });
+}
+
+// Check for page changes (SPA navigation)
+function checkForPageChange() {
+    const isNowConnectivityPage = isConnectivityPage();
+    const controlsExist = !!document.getElementById('cpiConnectivityControls');
+
+    if (!isNowConnectivityPage) {
+        if (connectivityCredentialsState.observer) {
+            connectivityCredentialsState.observer.disconnect();
+            connectivityCredentialsState.observer = null;
+        }
+        connectivityCredentialsState.initialized = false;
+        return;
+    }
+
+    // Reinitialize if navigation returned to the page or SAP recreated its header.
+    if (!connectivityCredentialsState.initialized || !controlsExist) {
         connectivityCredentialsState.initialized = false;
         initializePlugin();
     }
 }
-
 // Start monitoring
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => {
-        initializePlugin();
-        // Check for page changes every 2 seconds
-        setInterval(checkForPageChange, 2000);
-    });
-} else {
+function startConnectivityProfileManager() {
     initializePlugin();
-    // Check for page changes every 2 seconds
-    setInterval(checkForPageChange, 2000);
+
+    // Integration Suite navigation is a single-page application.
+    // Keep the route check so the controls are restored after navigation.
+    if (!window.__connectivityProfileManagerPageWatcher) {
+        window.__connectivityProfileManagerPageWatcher = setInterval(
+            checkForPageChange,
+            2000
+        );
+    }
+}
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', startConnectivityProfileManager, { once: true });
+} else {
+    startConnectivityProfileManager();
 }
 
 // Register with CPI Helper
